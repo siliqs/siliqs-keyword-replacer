@@ -19,12 +19,16 @@
 | PDF | 文字層、掃描影像、以及「看得到字卻抽不出字」的檔案 |
 | 影像 | `.png`、`.jpg`、`.bmp`、`.tif` |
 
-## v0.1.2 的變更
+## v0.1.2 / v0.1.3 的變更
 
 **OCR 引擎已內建**。過去掃描 PDF 與圖片要另外安裝 Tesseract，現在執行檔直接帶著
-Tesseract 與 `eng` / `chi_tra` 語言資料，下載就能用。檔案因此變大約 35 MB。
+Tesseract 與 `eng` / `chi_tra` 語言資料，下載就能用。
 
-CI 會在移除系統 Tesseract 的 PATH 後實跑一次執行檔，確認用的真的是內建那份。
+代價是檔案從 43.7 MB 變成 **106.5 MB**。已經挑掉用不到的部分（ICU 資料表 31.6 MB、
+方向偵測資料 10.1 MB），剩下的主要是 Tesseract 的 C++ runtime，沒得再省。
+
+CI 會在移除系統 Tesseract 的 PATH 後實跑一次執行檔並檢查報表，確認用的真的是內建那份——
+內建壞掉的版本發不出去。
 
 **舊版 `.doc` / `.xls` 仍需自行安裝 [LibreOffice](https://www.libreoffice.org/)**——
 它超過 700 MB，不適合隨附。
