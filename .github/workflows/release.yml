@@ -48,8 +48,38 @@ jobs:
         # 沒過測試就不發版
         run: pytest -q
 
+      - name: Stage Tesseract for bundling
+        shell: pwsh
+        run: |
+          # 只帶必要的：執行檔、DLL、以及 eng / osd / chi_tra 三份語言資料。
+          # 完整安裝含所有語言超過 100 MB，挑過之後大約 35 MB。
+          $source = "C:\Program Files\Tesseract-OCR"
+          $target = "vendor/tesseract"
+          New-Item -ItemType Directory -Force -Path "$target/tessdata" | Out-Null
+          Copy-Item "$source/*.exe" $target
+          Copy-Item "$source/*.dll" $target
+          foreach ($lang in @("eng", "osd", "chi_tra")) {
+            Copy-Item "$source/tessdata/$lang.traineddata" "$target/tessdata/"
+          }
+          if (Test-Path "$source/LICENSE") { Copy-Item "$source/LICENSE" "$target/LICENSE-Tesseract" }
+          "{0:N1} MB" -f ((Get-ChildItem $target -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+
       - name: Build exe
-        run: pyinstaller --onefile --windowed --paths . --name KeywordReplacer src/main.py
+        # Tesseract 一起打包進去，使用者不必自己安裝就能用 OCR
+        run: pyinstaller --onefile --windowed --paths . --add-data "vendor/tesseract;tesseract" --name KeywordReplacer src/main.py
+
+      - name: Smoke test the built exe (OCR must work without installed Tesseract)
+        shell: pwsh
+        run: |
+          # 把系統安裝的 Tesseract 移出 PATH，確認 exe 用的真的是內建那份
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike "*Tesseract*" }) -join ';'
+          & ./dist/KeywordReplacer.exe --src tests/samples --out exe_out --keyword Secret
+          $report = "exe_out/snoopy_folder/_report.csv"
+          if (-not (Test-Path $report)) { throw "exe 沒有產生報表" }
+          Get-Content $report
+          $scanned = Select-String -Path $report -Pattern "scanned_text.pdf"
+          if ($scanned -notmatch "OK,1") { throw "內建 Tesseract 沒有生效：掃描 PDF 未取代" }
+          Write-Host "內建 Tesseract 驗證通過"
 
       - name: Checksum
         shell: pwsh

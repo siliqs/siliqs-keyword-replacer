@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import List, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
@@ -36,8 +37,37 @@ class LowConfidenceError(SkipReason):
     """OCR 信心度低於門檻，不得盲目取代。"""
 
 
+_configured = False
+
+
+def bundled_tesseract():
+    """打包進 .exe 的 Tesseract；開發環境下回傳 None。
+
+    PyInstaller onefile 會把附帶檔案解到 sys._MEIPASS，發佈版的 Tesseract 就放在那裡的
+    tesseract/ 子目錄——使用者因此不必自己安裝。
+    """
+    base = getattr(sys, "_MEIPASS", None)
+    if not base:
+        return None
+    for name in ("tesseract.exe", "tesseract"):
+        candidate = os.path.join(base, "tesseract", name)
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
 def _pytesseract():
+    global _configured
     import pytesseract  # 延後匯入：沒裝 OCR 也要能跑純文字格式
+
+    if not _configured:
+        _configured = True
+        bundled = bundled_tesseract()
+        if bundled:
+            pytesseract.pytesseract.tesseract_cmd = bundled
+            # Tesseract 5 的 TESSDATA_PREFIX 要直接指到 tessdata 目錄本身
+            os.environ["TESSDATA_PREFIX"] = os.path.join(
+                os.path.dirname(bundled), "tessdata")
     return pytesseract
 
 

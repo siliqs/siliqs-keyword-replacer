@@ -27,6 +27,15 @@ def _force_utf8_stdio() -> None:
     處理本身早就完成、報表也寫好了，卻因為印一行摘要而讓整支程式以 exit 1 收場——
     在 CI 或批次腳本裡這會被誤判成整批失敗。
     """
+    # --windowed 打包的 exe 沒有 console，sys.stdout 會是 None，print() 直接爆炸。
+    # 使用者若用 CLI 參數執行發佈版，不能因為印不出字就整支掛掉。
+    import io as _io
+
+    if sys.stdout is None:
+        sys.stdout = _io.StringIO()
+    if sys.stderr is None:
+        sys.stderr = _io.StringIO()
+
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:

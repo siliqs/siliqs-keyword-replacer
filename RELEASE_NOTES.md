@@ -19,6 +19,16 @@
 | PDF | 文字層、掃描影像、以及「看得到字卻抽不出字」的檔案 |
 | 影像 | `.png`、`.jpg`、`.bmp`、`.tif` |
 
+## v0.1.2 的變更
+
+**OCR 引擎已內建**。過去掃描 PDF 與圖片要另外安裝 Tesseract，現在執行檔直接帶著
+Tesseract 與 `eng` / `chi_tra` 語言資料，下載就能用。檔案因此變大約 35 MB。
+
+CI 會在移除系統 Tesseract 的 PATH 後實跑一次執行檔，確認用的真的是內建那份。
+
+**舊版 `.doc` / `.xls` 仍需自行安裝 [LibreOffice](https://www.libreoffice.org/)**——
+它超過 700 MB，不適合隨附。
+
 ## v0.1.1 的變更
 
 **PDF 改為三級自動升級**：文字層 → 內嵌圖片 OCR → **整頁 OCR**。
@@ -39,10 +49,10 @@
 
 ## 外部相依
 
-- **OCR**（掃描 PDF、文件內嵌圖片、單張影像）需要 [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)，繁體中文需 `chi_tra` 語言包。
-- **舊版 `.doc` / `.xls`** 需要 [LibreOffice](https://www.libreoffice.org/)。
+- **OCR** — 已內建，不必安裝任何東西。
+- **舊版 `.doc` / `.xls`** — 需要 [LibreOffice](https://www.libreoffice.org/)；未安裝時其餘格式照常處理，報表會標明。
 
-兩者缺席時，其餘格式照常處理，報表會標明哪些檔案未經檢查。
+隨附元件的授權見 `THIRD_PARTY_NOTICES.md`。
 
 ## 執行結果
 

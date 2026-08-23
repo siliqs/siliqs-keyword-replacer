@@ -59,10 +59,13 @@ python tools/diagnose_pdf.py <檔案.pdf> <關鍵字>
 
 | 功能 | 需要 |
 |---|---|
-| OCR（掃描 PDF、內嵌圖片、單張影像） | [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)，繁中需 `chi_tra` 語言包 |
-| 舊版 `.doc` / `.xls` | [LibreOffice](https://www.libreoffice.org/) |
+| OCR（掃描 PDF、內嵌圖片、單張影像） | **已內建**（Tesseract + `eng` / `chi_tra` 語言資料，不必另外安裝） |
+| 舊版 `.doc` / `.xls` | [LibreOffice](https://www.libreoffice.org/)，需自行安裝 |
 
-兩者缺席時其餘格式照常處理，報表會標明哪些檔案未經檢查。
+LibreOffice 未安裝時其餘格式照常處理，報表會標明哪些檔案未處理。
+
+從原始碼執行（非 exe）時，OCR 會改用系統安裝的 Tesseract。
+隨附元件的授權見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 開發
 
