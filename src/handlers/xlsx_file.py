@@ -56,7 +56,7 @@ def _replace_in_formula(formula: str, pattern):
     return _STRING_LITERAL.sub(_sub, formula), total
 
 
-def _replace_in_images(workbook, pattern, warnings) -> int:
+def _replace_in_images(workbook, pattern, warnings, min_confidence=None) -> int:
     count = 0
     for sheet in workbook.worksheets:
         for embedded in getattr(sheet, "_images", []) or []:
@@ -64,7 +64,8 @@ def _replace_in_images(workbook, pattern, warnings) -> int:
             with Image.open(io.BytesIO(data)) as image:
                 image_format = image.format or "PNG"
                 new_image, hits, warning = ocr.replace_in_image_safe(
-                    image, pattern, "工作表 %r 的圖片：" % sheet.title)
+                    image, pattern, "工作表 %r 的圖片：" % sheet.title,
+                    min_confidence or ocr.OCR_MIN_CONFIDENCE)
                 if warning:
                     warnings.append(warning)
                 if not hits:
@@ -106,7 +107,9 @@ def process(src_path: str, dst_path: str, keywords: Iterable[str], options: Matc
     has_images = any(getattr(s, "_images", None) for s in workbook.worksheets)
     if getattr(options, "ocr_images", True) and has_images:
         if ocr.is_available():
-            count += _replace_in_images(workbook, pattern, warnings)
+            count += _replace_in_images(
+                workbook, build_pattern(keywords, options, flexible_space=True), warnings,
+                getattr(options, "min_confidence", None))
         else:
             warnings.append("影像未經 OCR 檢查（Tesseract 不可用）")
 

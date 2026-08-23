@@ -23,9 +23,10 @@ STATUS_FAIL = "FAIL"
 
 
 @dataclass
-class MatchOptions:
+class MatchOptions:  # noqa: E302
     """關鍵字比對選項（CLAUDE.md §4）。"""
 
     case_sensitive: bool = True   # 預設區分大小寫
     whole_word: bool = False      # 預設允許子字串命中
     ocr_images: bool = True       # 是否對影像內容做 OCR 取代（需 Tesseract）
+    min_confidence: float = OCR_MIN_CONFIDENCE   # OCR 信心度門檻，低於此值不取代

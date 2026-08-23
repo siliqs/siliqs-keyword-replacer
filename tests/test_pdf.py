@@ -126,7 +126,8 @@ def test_unreadable_text_layer_falls_back_to_page_ocr(tmp_path, monkeypatch):
     # 模擬「讀得到字但是亂碼」的頁面：偵測說讀不出來，就該直接走整頁 OCR
     monkeypatch.setattr(pdf_file, "_text_looks_unreadable", lambda page: True)
     monkeypatch.setattr(pdf_file, "_replace_in_images",
-                        lambda document, page, pattern, done, warnings, number: 0)
+                        lambda document, page, pattern, done, warnings, number,
+                        min_confidence=None: 0)
 
     dst = str(tmp_path / "out.pdf")
     count, message = pdf_file.process(SRC, dst, ["Secret"], MatchOptions())
@@ -154,7 +155,8 @@ def test_readable_pdf_without_match_skips_expensive_ocr(tmp_path, monkeypatch):
     """文字讀得出來卻沒命中 → 就是沒有，不該再花時間整頁 OCR。"""
     calls = []
     monkeypatch.setattr(pdf_file, "_replace_by_page_render",
-                        lambda page, pattern, warnings, dpi=200: calls.append(page.number) or 0)
+                        lambda page, pattern, warnings, min_confidence=None, dpi=200:
+                        calls.append(page.number) or 0)
     count, message = pdf_file.process(SRC, str(tmp_path / "out.pdf"),
                                       ["絕對不存在的詞"], MatchOptions())
     assert count == 0

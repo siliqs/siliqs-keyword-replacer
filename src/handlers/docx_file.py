@@ -95,7 +95,7 @@ def _replace_in_paragraph(p_element, pattern) -> int:
     return len(matches)
 
 
-def _replace_in_images(document, pattern, warnings) -> int:
+def _replace_in_images(document, pattern, warnings, min_confidence=None) -> int:
     """內嵌圖片走 OCR；輸出沿用原圖格式，不把 JPEG 換成 PNG（R2 的精神）。"""
     count = 0
     for part in document.part.package.iter_parts():
@@ -105,7 +105,8 @@ def _replace_in_images(document, pattern, warnings) -> int:
         with Image.open(io.BytesIO(part.blob)) as image:
             image_format = image.format or "PNG"
             new_image, hits, warning = ocr.replace_in_image_safe(
-                image, pattern, "內嵌圖片 %s：" % part.partname)
+                image, pattern, "內嵌圖片 %s：" % part.partname,
+                min_confidence or ocr.OCR_MIN_CONFIDENCE)
             if warning:
                 warnings.append(warning)
             if not hits:
@@ -137,7 +138,9 @@ def process(src_path: str, dst_path: str, keywords: Iterable[str], options: Matc
     warnings = []
     if getattr(options, "ocr_images", True):
         if ocr.is_available():
-            count += _replace_in_images(document, pattern, warnings)
+            count += _replace_in_images(
+                document, build_pattern(keywords, options, flexible_space=True), warnings,
+                getattr(options, "min_confidence", None))
         elif _has_images(document):
             warnings.append("影像未經 OCR 檢查（Tesseract 不可用）")
 

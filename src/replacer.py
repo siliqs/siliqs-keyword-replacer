@@ -24,10 +24,15 @@ def normalize_keywords(keywords: Iterable[str]) -> List[str]:
     return result
 
 
-def build_pattern(keywords: Iterable[str], options: MatchOptions):
+def build_pattern(keywords: Iterable[str], options: MatchOptions, flexible_space: bool = False):
     """組出單一 regex；無有效關鍵字時回傳 None。
 
     全字比對僅對「純 ASCII 詞」加上 \\b 邊界；中文不做斷詞，加了 \\b 反而失效。
+
+    `flexible_space=True` 給 OCR 用：OCR 是逐「詞」回報的，同一行接起來時
+    英文詞之間有空格、中文詞之間沒有，且斷詞位置不保證。因此把關鍵字的每個字元
+    之間都允許零個以上的空白，`Monthly Statement` 才比對得到 `MonthlyStatement`，
+    `機密文件` 也比對得到被拆成兩個詞的 `機密 文件`。
     """
     kws = normalize_keywords(keywords)
     if not kws:
@@ -35,7 +40,10 @@ def build_pattern(keywords: Iterable[str], options: MatchOptions):
 
     parts = []
     for kw in kws:
-        escaped = re.escape(kw)
+        if flexible_space:
+            escaped = r"\s*".join(re.escape(ch) for ch in kw if not ch.isspace())
+        else:
+            escaped = re.escape(kw)
         if options.whole_word and _ASCII_WORD.match(kw):
             escaped = r"\b" + escaped + r"\b"
         parts.append(escaped)

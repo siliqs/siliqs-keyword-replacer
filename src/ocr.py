@@ -131,9 +131,21 @@ def _words(image: Image.Image, langs: str) -> List[dict]:
 
 
 def _char_boxes(words: List[dict]):
-    """把每個詞按字數等分成字元框，才能定位到詞中間的關鍵字。"""
+    """把每個詞按字數等分成字元框，才能定位到詞中間的關鍵字。
+
+    詞與詞之間補一個空白字元，方框涵蓋兩詞之間的間隙——不補的話，
+    `Monthly Statement` 會被接成 `MonthlyStatement`，使用者輸入的空格永遠比對不到。
+    """
     boxes = []
+    previous = None
     for word in words:
+        if previous is not None:
+            gap_left = previous["left"] + previous["width"]
+            gap_right = word["left"]
+            boxes.append((" ",
+                          (int(gap_left), word["top"],
+                           int(max(gap_right, gap_left)), word["top"] + word["height"]),
+                          min(previous["conf"], word["conf"])))
         text = word["text"]
         step = word["width"] / float(len(text)) if text else 0
         for index, char in enumerate(text):
@@ -141,6 +153,7 @@ def _char_boxes(words: List[dict]):
             boxes.append((char,
                           (int(left), word["top"], int(left + step), word["top"] + word["height"]),
                           word["conf"]))
+        previous = word
     return boxes
 
 
@@ -170,10 +183,11 @@ def _text_color(image: Image.Image, box):
     return (raw[darkest], raw[darkest + 1], raw[darkest + 2])
 
 
-def replace_in_image_safe(image: Image.Image, pattern, label: str):
+def replace_in_image_safe(image: Image.Image, pattern, label: str,
+                          min_confidence: float = OCR_MIN_CONFIDENCE):
     """回傳 (影像, 取代次數, 警告)。信心度不足時只跳過這張圖，不牽連整個檔案（§3.4）。"""
     try:
-        new_image, count = replace_in_image(image, pattern)
+        new_image, count = replace_in_image(image, pattern, min_confidence=min_confidence)
         return new_image, count, None
     except LowConfidenceError as exc:
         return image, 0, "%s %s" % (label, exc)

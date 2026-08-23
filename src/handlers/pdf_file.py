@@ -149,7 +149,8 @@ def _text_looks_unreadable(page) -> bool:
     return glyphs > 20 and len(chars) < glyphs * 0.5
 
 
-def _replace_by_page_render(page, pattern, warnings, dpi=_RENDER_DPI) -> int:
+def _replace_by_page_render(page, pattern, warnings, min_confidence=None,
+                            dpi=_RENDER_DPI) -> int:
     """最後手段：整頁彩現後 OCR，命中處換算回 PDF 座標塗底色補字。
 
     這一級不管頁面內部是文字、圖片還是向量外框——畫得出來就抓得到。
@@ -159,7 +160,8 @@ def _replace_by_page_render(page, pattern, warnings, dpi=_RENDER_DPI) -> int:
     image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
 
     try:
-        boxes = ocr.find_hits(image, pattern)
+        boxes = ocr.find_hits(image, pattern,
+                              min_confidence=min_confidence or ocr.OCR_MIN_CONFIDENCE)
     except ocr.LowConfidenceError as exc:
         warnings.append("第%d頁整頁 OCR：%s" % (page.number + 1, exc))
         return 0
@@ -188,7 +190,8 @@ def _replace_by_page_render(page, pattern, warnings, dpi=_RENDER_DPI) -> int:
     return len(plans)
 
 
-def _replace_in_images(document, page, pattern, done, warnings, page_number):
+def _replace_in_images(document, page, pattern, done, warnings, page_number,
+                       min_confidence=None):
     """OCR 取代頁面上的內嵌圖片；同一個 xref 只處理一次。"""
     count = 0
     for image_info in page.get_images(full=True):
@@ -202,7 +205,8 @@ def _replace_in_images(document, page, pattern, done, warnings, page_number):
             continue
         with Image.open(io.BytesIO(base["image"])) as image:
             label = "第%d頁圖片：" % page_number
-            new_image, hits, warning = ocr.replace_in_image_safe(image, pattern, label)
+            new_image, hits, warning = ocr.replace_in_image_safe(
+                image, pattern, label, min_confidence or ocr.OCR_MIN_CONFIDENCE)
             if warning:
                 warnings.append(warning)
             if not hits:
@@ -219,6 +223,9 @@ def process(src_path: str, dst_path: str, keywords: Iterable[str], options: Matc
     pattern = build_pattern(keywords, options)
     if pattern is None:
         return 0, ""
+
+    # OCR 是逐「詞」回報的，比對時要容許詞與詞之間的空白（見 build_pattern）
+    ocr_pattern = build_pattern(keywords, options, flexible_space=True)
 
     document = fitz.open(src_path)          # R1：來源只讀，改動只存在記憶體
     try:
@@ -245,7 +252,9 @@ def process(src_path: str, dst_path: str, keywords: Iterable[str], options: Matc
         for page in document:
             # 這一頁的文字讀不出來就別浪費時間比對，直接走整頁 OCR
             if page.number in unreadable and ocr_ready:
-                count += _replace_by_page_render(page, pattern, warnings)
+                count += _replace_by_page_render(
+                    page, ocr_pattern, warnings,
+                    getattr(options, "min_confidence", None))
                 rendered.add(page.number)
             else:
                 hits = _collect_matches(page, pattern)
@@ -264,8 +273,9 @@ def process(src_path: str, dst_path: str, keywords: Iterable[str], options: Matc
                         count += 1
 
             if ocr_ready and page.get_images():
-                count += _replace_in_images(document, page, pattern, done_xrefs,
-                                            warnings, page.number + 1)
+                count += _replace_in_images(document, page, ocr_pattern, done_xrefs,
+                                            warnings, page.number + 1,
+                                            getattr(options, "min_confidence", None))
 
         # 刻意不做「沒命中就整份 OCR 重掃」：文字讀得出來卻沒有這個詞，
         # 那就是真的沒有，整頁彩現只是白花時間（一份 50 頁的檔可能要跑好幾分鐘）。

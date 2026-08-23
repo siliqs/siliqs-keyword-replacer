@@ -60,7 +60,8 @@ def _save_kwargs(image: Image.Image) -> dict:
 
 def process(src_path: str, dst_path: str, keywords: Iterable[str], options: MatchOptions):
     """回傳 (取代次數, 警告訊息)。"""
-    pattern = build_pattern(keywords, options)
+    # OCR 逐「詞」回報，比對要容許詞間空白（`Monthly Statement` vs `MonthlyStatement`）
+    pattern = build_pattern(keywords, options, flexible_space=True)
     if pattern is None:
         shutil.copyfile(src_path, dst_path)
         return 0, ""
@@ -71,7 +72,9 @@ def process(src_path: str, dst_path: str, keywords: Iterable[str], options: Matc
 
     with Image.open(src_path) as image:      # R1：只讀
         image_format = image.format or "PNG"
-        new_image, count = ocr.replace_in_image(image, pattern)
+        new_image, count = ocr.replace_in_image(
+            image, pattern, min_confidence=getattr(options, "min_confidence", None)
+            or ocr.OCR_MIN_CONFIDENCE)
         if count == 0:
             shutil.copyfile(src_path, dst_path)   # 沒命中就一個位元組都不動
             return 0, ""

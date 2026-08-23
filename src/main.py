@@ -16,7 +16,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from src.config import OUTPUT_DIR_NAME, REPLACEMENT, MatchOptions  # noqa: E402
+from src.config import (  # noqa: E402
+    OCR_MIN_CONFIDENCE, OUTPUT_DIR_NAME, REPLACEMENT, MatchOptions,
+)
 from src.dispatcher import supported_extensions  # noqa: E402
 from src.runner import run  # noqa: E402
 
@@ -48,7 +50,8 @@ def _force_utf8_stdio() -> None:
 def run_cli(args) -> int:
     _force_utf8_stdio()
     options = MatchOptions(case_sensitive=not args.ignore_case, whole_word=args.whole_word,
-                           ocr_images=not args.no_ocr)
+                           ocr_images=not args.no_ocr,
+                           min_confidence=args.min_confidence)
 
     def progress(index, total, path):
         print("[%d/%d] %s" % (index, total, path))
@@ -74,6 +77,7 @@ def run_gui() -> int:
     ignore_case_var = tk.BooleanVar(value=False)
     whole_word_var = tk.BooleanVar(value=False)
     ocr_var = tk.BooleanVar(value=True)
+    confidence_var = tk.StringVar(value=str(OCR_MIN_CONFIDENCE))
     status_var = tk.StringVar(value="待命中")
 
     def pick(var, title):
@@ -102,17 +106,23 @@ def run_gui() -> int:
         row=4, column=1, sticky="w", pady=6)
     ttk.Checkbutton(frame, text="影像 OCR", variable=ocr_var).grid(row=4, column=2, sticky="w", pady=6)
 
+    confidence_row = ttk.Frame(frame)
+    confidence_row.grid(row=5, column=0, columnspan=3, sticky="w")
+    ttk.Label(confidence_row, text="OCR 信心度門檻（0–100，圖片模糊時可調低）").pack(side="left")
+    ttk.Spinbox(confidence_row, from_=0, to=100, width=5,
+                textvariable=confidence_var).pack(side="left", padx=6)
+
     progress_bar = ttk.Progressbar(frame, mode="determinate")
-    progress_bar.grid(row=5, column=0, columnspan=3, sticky="we", pady=(6, 4))
-    ttk.Label(frame, textvariable=status_var).grid(row=6, column=0, columnspan=3, sticky="w")
+    progress_bar.grid(row=6, column=0, columnspan=3, sticky="we", pady=(6, 4))
+    ttk.Label(frame, textvariable=status_var).grid(row=7, column=0, columnspan=3, sticky="w")
 
     log_box = tk.Text(frame, height=12, width=72, state="disabled")
-    log_box.grid(row=7, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
-    frame.rowconfigure(7, weight=1)
+    log_box.grid(row=8, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
+    frame.rowconfigure(8, weight=1)
     frame.columnconfigure(1, weight=1)
 
     start_button = ttk.Button(frame, text="開始")
-    start_button.grid(row=8, column=2, sticky="e", pady=8)
+    start_button.grid(row=9, column=2, sticky="e", pady=8)
 
     def append_log(text):
         log_box.configure(state="normal")
@@ -135,9 +145,16 @@ def run_gui() -> int:
             return
 
         start_button.configure(state="disabled")
+        try:
+            confidence = float(confidence_var.get())
+        except ValueError:
+            messagebox.showerror("錯誤", "信心度門檻必須是 0–100 的數字")
+            return
+
         options = MatchOptions(case_sensitive=not ignore_case_var.get(),
                                whole_word=whole_word_var.get(),
-                               ocr_images=ocr_var.get())
+                               ocr_images=ocr_var.get(),
+                               min_confidence=confidence)
 
         def progress(index, total, path):
             def update():
@@ -184,6 +201,9 @@ def main(argv=None) -> int:
     parser.add_argument("--whole-word", action="store_true", help="全字比對（僅對英數字生效）")
     parser.add_argument("--no-ocr", action="store_true",
                         help="關閉影像 OCR（不檢查圖片與掃描頁的內容）")
+    parser.add_argument("--min-confidence", type=float, default=OCR_MIN_CONFIDENCE,
+                        help="OCR 信心度門檻（預設 %(default)s）；低於此值不取代，"
+                             "圖片模糊或解析度低時可以調低")
     args = parser.parse_args(argv)
 
     if args.src or args.out or args.keyword:
