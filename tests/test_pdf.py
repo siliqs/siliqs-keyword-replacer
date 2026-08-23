@@ -90,10 +90,14 @@ def test_scanned_pdf_refused_when_ocr_disabled(tmp_path):
 
 
 def test_scanned_pdf_needs_ocr_engine(tmp_path, monkeypatch):
+    """沒有文字層又沒有 OCR 引擎：記 SKIP 並說明，不得輸出沒改過的檔。"""
     from src import ocr
+    from src.errors import SkipReason
+
     monkeypatch.setattr(ocr, "is_available", lambda: False)
-    with pytest.raises(ocr.OcrUnavailableError):
+    with pytest.raises(SkipReason) as excinfo:
         pdf_file.process(SCANNED, str(tmp_path / "out.pdf"), ["機密"], MatchOptions())
+    assert "OCR" in str(excinfo.value)
 
 
 def test_no_keyword_no_change(tmp_path):

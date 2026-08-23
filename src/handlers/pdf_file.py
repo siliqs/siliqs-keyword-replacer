@@ -16,6 +16,7 @@ snoopy 在原字級下超過可用寬度才等比縮小，永遠不為了填滿�
 from __future__ import annotations
 
 import io
+import unicodedata
 from typing import Iterable, List
 
 try:
@@ -119,22 +120,33 @@ def _has_text(document) -> bool:
     return False
 
 
-def _text_looks_unreadable(page) -> bool:
-    """頁面畫了一堆字形，卻抽不出對應數量的字元 → 有字讀不到。
+# 這些類別的字元不會出現在正常內文裡：控制字元、未定義碼位、造字區、
+# 落單的組合符號與修飾符號。字型缺 ToUnicode 時，抽出來的就是這種東西。
+_GARBAGE_CATEGORIES = frozenset(("Cc", "Cf", "Cn", "Co", "Cs", "Mn", "Sk"))
+_GARBAGE_RATIO = 0.25
 
-    典型成因：嵌入字型缺 ToUnicode 對照表，或字碼落在造字區。
-    這種頁面「抽得到一點文字」，所以 `_has_text()` 會回 True，
-    但關鍵字永遠比對不到——必須靠整頁彩現 OCR 才救得回來。
+
+def _text_looks_unreadable(page) -> bool:
+    """判斷「畫面看得到字，抽出來卻不是字」。
+
+    實測某銀行月結單：抽得出 1855 個字元，其中 837 個是控制字元、48 個未定義碼位、
+    209 個組合符號，落點散在 U+0200 / U+0300 / U+0600 這些不相干的區塊——
+    那是字型內建編碼（等同 glyph id）被當成 Unicode 讀的結果。
+
+    只看造字區或 `\ufffd` 會漏掉這種檔案，所以改用 Unicode 類別的比例來判斷。
     """
     text = page.get_text("text")
+    chars = [c for c in text if not c.isspace()]
+    if chars:
+        garbage = sum(1 for c in chars if unicodedata.category(c) in _GARBAGE_CATEGORIES)
+        if garbage / float(len(chars)) > _GARBAGE_RATIO:
+            return True
+
+    # 另一個訊號：畫了一堆字形，卻抽不出對應數量的字元
     glyphs = sum(len(span["chars"]) for block in page.get_text("rawdict")["blocks"]
                  if block.get("type") == 0
                  for line in block["lines"] for span in line["spans"])
-    if glyphs <= 20:
-        return False
-    readable = sum(1 for ch in text if not ch.isspace() and ch != "\ufffd"
-                   and not (0xE000 <= ord(ch) <= 0xF8FF))
-    return readable < glyphs * 0.5
+    return glyphs > 20 and len(chars) < glyphs * 0.5
 
 
 def _replace_by_page_render(page, pattern, warnings, dpi=_RENDER_DPI) -> int:
@@ -212,58 +224,65 @@ def process(src_path: str, dst_path: str, keywords: Iterable[str], options: Matc
     try:
         want_ocr = getattr(options, "ocr_images", True)
         ocr_ready = want_ocr and ocr.is_available()
-        unreadable = [p.number + 1 for p in document if _text_looks_unreadable(p)]
+        has_text = _has_text(document)
+        unreadable = set(p.number for p in document if _text_looks_unreadable(p))
 
-        if not _has_text(document) or unreadable:
-            # 內容讀不出來，又不能 OCR → 什麼都做不到，記 SKIP 而不是輸出一份沒改的檔
-            if not want_ocr:
-                raise NeedsOcrError(
-                    "PDF 的文字讀不出來（無文字層或字型缺對照表），但 OCR 選項已關閉")
-            ocr.ensure_available()
-            ocr_ready = True
+        if not has_text and not want_ocr:
+            raise NeedsOcrError("PDF 無文字層（疑似掃描影像），但 OCR 選項已關閉")
 
         count = 0
         warnings = []
         done_xrefs = set()
+        rendered = set()
         if want_ocr and not ocr_ready:
             warnings.append("影像未經 OCR 檢查（Tesseract 不可用）")
         if unreadable:
-            warnings.append("第 %s 頁的文字抽不出來（字型缺對照表或為向量外框），改用整頁 OCR"
-                            % "、".join(str(n) for n in unreadable))
+            warnings.append(
+                "第 %s 頁的文字抽不出正確字碼（字型缺對照表），%s"
+                % ("、".join(str(n + 1) for n in sorted(unreadable)),
+                   "已改用整頁 OCR" if ocr_ready else "但 OCR 不可用"))
 
-        # 第 1 級：文字層
         for page in document:
-            hits = _collect_matches(page, pattern)
-            if hits:
-                for hit in hits:
-                    page.add_redact_annot(hit["rect"])   # 只刪字，不畫黑框
-                # 圖片與線條不得被 redaction 波及（R5）
-                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
-                                      graphics=fitz.PDF_REDACT_LINE_ART_NONE)
+            # 這一頁的文字讀不出來就別浪費時間比對，直接走整頁 OCR
+            if page.number in unreadable and ocr_ready:
+                count += _replace_by_page_render(page, pattern, warnings)
+                rendered.add(page.number)
+            else:
+                hits = _collect_matches(page, pattern)
+                if hits:
+                    for hit in hits:
+                        page.add_redact_annot(hit["rect"])   # 只刪字，不畫黑框
+                    # 圖片與線條不得被 redaction 波及（R5）
+                    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
+                                          graphics=fitz.PDF_REDACT_LINE_ART_NONE)
+                    for hit in hits:
+                        page.insert_text(hit["origin"], REPLACEMENT,
+                                         fontname=_FALLBACK_FONT,
+                                         fontsize=_fit_fontsize(hit["size"], hit["available"]),
+                                         color=hit["color"],
+                                         rotate=hit["rotate"])
+                        count += 1
 
-                for hit in hits:
-                    page.insert_text(hit["origin"], REPLACEMENT,
-                                     fontname=_FALLBACK_FONT,
-                                     fontsize=_fit_fontsize(hit["size"], hit["available"]),
-                                     color=hit["color"],
-                                     rotate=hit["rotate"])
-                    count += 1
-
-            # 第 2 級：內嵌圖片
             if ocr_ready and page.get_images():
                 count += _replace_in_images(document, page, pattern, done_xrefs,
                                             warnings, page.number + 1)
 
-        # 第 3 級：整頁彩現 OCR。前兩級毫無收穫才跑，因為它最貴也最粗暴
+        # 前面全無收穫時，剩下的頁面也用整頁 OCR 掃一遍（最貴，所以放最後）
         if count == 0 and ocr_ready:
-            rendered = 0
+            extra = 0
             for page in document:
-                rendered += _replace_by_page_render(page, pattern, warnings)
-            if rendered:
+                if page.number not in rendered:
+                    extra += _replace_by_page_render(page, pattern, warnings)
+                    rendered.add(page.number)
+            if extra:
                 warnings.append("文字層比對不到，改以整頁 OCR 取代（版面為彩現結果）")
-            count += rendered
+            count += extra
 
         if count == 0:
+            # 讀不出文字又沒有 OCR：什麼都做不到，不得輸出一份沒改的檔
+            if (not has_text or unreadable) and not ocr_ready:
+                raise NeedsOcrError(
+                    "PDF 的文字讀不出來（無文字層或字型缺對照表），而 OCR 不可用，無法處理")
             tried = ["文字層"]
             if ocr_ready:
                 tried += ["內嵌圖片 OCR", "整頁 OCR"]
