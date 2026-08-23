@@ -267,26 +267,22 @@ def process(src_path: str, dst_path: str, keywords: Iterable[str], options: Matc
                 count += _replace_in_images(document, page, pattern, done_xrefs,
                                             warnings, page.number + 1)
 
-        # 前面全無收穫時，剩下的頁面也用整頁 OCR 掃一遍（最貴，所以放最後）
-        if count == 0 and ocr_ready:
-            extra = 0
-            for page in document:
-                if page.number not in rendered:
-                    extra += _replace_by_page_render(page, pattern, warnings)
-                    rendered.add(page.number)
-            if extra:
-                warnings.append("文字層比對不到，改以整頁 OCR 取代（版面為彩現結果）")
-            count += extra
-
+        # 刻意不做「沒命中就整份 OCR 重掃」：文字讀得出來卻沒有這個詞，
+        # 那就是真的沒有，整頁彩現只是白花時間（一份 50 頁的檔可能要跑好幾分鐘）。
+        # 只有「讀得出來但是亂碼」的頁面才值得重試，那在上面的迴圈就處理掉了。
         if count == 0:
             # 讀不出文字又沒有 OCR：什麼都做不到，不得輸出一份沒改的檔
             if (not has_text or unreadable) and not ocr_ready:
                 raise NeedsOcrError(
-                    "PDF 的文字讀不出來（無文字層或字型缺對照表），而 OCR 不可用，無法處理")
-            tried = ["文字層"]
-            if ocr_ready:
-                tried += ["內嵌圖片 OCR", "整頁 OCR"]
-            warnings.append("未取代任何內容：已試過 %s，都沒有命中關鍵字" % "、".join(tried))
+                    "PDF 的文字讀不出來（無文字層或字型缺對照表），"
+                    "而 OCR 不可用（找不到 Tesseract 或已關閉 OCR 選項），無法處理")
+            tried = ["整頁 OCR" if page_number in rendered else "文字層"
+                     for page_number in range(document.page_count)]
+            tried = sorted(set(tried))
+            if ocr_ready and any(p.get_images() for p in document):
+                tried.append("內嵌圖片 OCR")
+            warnings.append("未取代任何內容：已試過 %s，檔案中沒有這個關鍵字"
+                            % "、".join(tried))
 
         document.save(dst_path, garbage=3, deflate=True)
         return count, "；".join(warnings)
