@@ -32,6 +32,16 @@ jobs:
             -OutFile "$tessdata\chi_tra.traineddata"
           & "C:\Program Files\Tesseract-OCR\tesseract.exe" --list-langs
 
+      - name: Measure Tesseract footprint
+        shell: pwsh
+        run: |
+          # 診斷用：發佈版把 Tesseract 打包進 exe，要知道體積是被什麼吃掉的
+          $dir = "C:\Program Files\Tesseract-OCR"
+          "總計 {0:N1} MB" -f ((Get-ChildItem $dir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)
+          Get-ChildItem $dir -Recurse -File | Sort-Object Length -Descending |
+            Select-Object -First 12 |
+            ForEach-Object { "{0,8:N1} MB  {1}" -f ($_.Length/1MB), $_.FullName.Replace("$dir\","") }
+
       - name: Install LibreOffice (legacy .doc/.xls engine)
         run: choco install libreoffice-fresh --no-progress -y
 
