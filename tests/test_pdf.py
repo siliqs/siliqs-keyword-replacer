@@ -103,3 +103,44 @@ def test_source_untouched(tmp_path):
     before = io.open(SRC, "rb").read()
     _process(tmp_path)
     assert io.open(SRC, "rb").read() == before
+
+
+def test_unreadable_text_layer_falls_back_to_page_ocr(tmp_path, monkeypatch):
+    """畫面看得到字、文字層讀不出來（銀行月結單常見）時，要自動升級到整頁 OCR。
+
+    這裡把前兩級打掉來模擬那種檔案：文字層比對不到、也沒有可改的內嵌圖片。
+    """
+    import pytesseract
+
+    from src import ocr
+    if not ocr.is_available():
+        pytest.skip("未安裝 Tesseract")
+
+    monkeypatch.setattr(pdf_file, "_collect_matches", lambda page, pattern: [])
+    monkeypatch.setattr(pdf_file, "_replace_in_images",
+                        lambda document, page, pattern, done, warnings, number: 0)
+
+    dst = str(tmp_path / "out.pdf")
+    count, message = pdf_file.process(SRC, dst, ["Secret"], MatchOptions())
+
+    assert count == 1
+    assert "整頁 OCR" in message
+    doc = fitz.open(dst)
+    pixmap = doc[0].get_pixmap(dpi=150)
+    from PIL import Image
+    image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+    text = pytesseract.image_to_string(image, lang="eng")
+    assert "Secret" not in text
+    assert "snoopy" in text.lower()
+
+
+def test_zero_replacement_says_what_was_tried(tmp_path):
+    _, message = pdf_file.process(SRC, str(tmp_path / "out.pdf"),
+                                  ["絕對不存在的詞"], MatchOptions(ocr_images=False))
+    assert "未取代任何內容" in message
+    assert "文字層" in message
+
+
+def test_readable_pdf_not_flagged_as_unreadable():
+    document = fitz.open(SRC)
+    assert not any(pdf_file._text_looks_unreadable(page) for page in document)

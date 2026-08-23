@@ -149,14 +149,16 @@ def replace_in_image_safe(image: Image.Image, pattern, label: str):
         return image, 0, "%s %s" % (label, exc)
 
 
-def replace_in_image(image: Image.Image, pattern, langs=DEFAULT_LANGS,
-                     min_confidence: float = OCR_MIN_CONFIDENCE) -> Tuple[Image.Image, int]:
-    """在影像上取代關鍵字。回傳 (新影像, 取代次數)；沒命中就回傳原影像。"""
+def find_hits(image: Image.Image, pattern, langs=DEFAULT_LANGS,
+              min_confidence: float = OCR_MIN_CONFIDENCE):
+    """OCR 後回傳所有命中的方框 [(left, top, right, bottom)]（影像像素座標）。
+
+    抽出來獨立成函式，是因為 PDF 的「整頁重繪」路徑要的是座標，不是改好的圖。
+    """
     ensure_available()
-    rgb = image.convert("RGB")
-    words = _words(rgb, resolve_langs(langs))
+    words = _words(image, resolve_langs(langs))
     if not words:
-        return image, 0
+        return []
 
     # 依行分組後接成字串比對，關鍵字跨詞也抓得到
     lines = {}
@@ -180,7 +182,20 @@ def replace_in_image(image: Image.Image, pattern, langs=DEFAULT_LANGS,
                     % (match.group(0), confidence, min_confidence))
             hits.append((min(b[1][0] for b in covered), min(b[1][1] for b in covered),
                          max(b[1][2] for b in covered), max(b[1][3] for b in covered)))
+    return hits
 
+
+def background_color(image: Image.Image, box):
+    """對外公開：取框線外緣的底色（PDF 整頁重繪路徑要用）。"""
+    return _background_color(image, box)
+
+
+def replace_in_image(image: Image.Image, pattern, langs=DEFAULT_LANGS,
+                     min_confidence: float = OCR_MIN_CONFIDENCE) -> Tuple[Image.Image, int]:
+    """在影像上取代關鍵字。回傳 (新影像, 取代次數)；沒命中就回傳原影像。"""
+    ensure_available()
+    rgb = image.convert("RGB")
+    hits = find_hits(rgb, pattern, langs, min_confidence)
     if not hits:
         return image, 0
 

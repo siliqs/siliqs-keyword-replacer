@@ -17,7 +17,7 @@ writing each result back in its original file format. Sources are never modified
 | 純文字 | `.txt`、`.csv` | 保留原編碼（UTF-8 / BIG5…）、BOM 與換行符 |
 | Word | `.docx`、`.doc` | 關鍵字被切成多個 run 也抓得到；`.doc` 走 LibreOffice 轉檔 |
 | Excel | `.xlsx`、`.xls` | 只改字串儲存格；公式只換雙引號內的字串常數 |
-| PDF | `.pdf` | 文字層直接取代；掃描影像走 OCR |
+| PDF | `.pdf` | 三級自動升級：文字層 → 內嵌圖片 OCR → 整頁 OCR |
 | 影像 | `.png`、`.jpg`、`.bmp`、`.tif` | OCR 定位後塗底色疊字 |
 
 ## 設計原則
@@ -29,6 +29,21 @@ writing each result back in its original file format. Sources are never modified
 5. **失敗不留半成品** — 單一檔案失敗不中斷整批，也不會留下半個檔。
 6. **做不到就不輸出** — 處理不了的檔案記 SKIP 並寫明原因，不會給你一份沒改到的檔。
 7. **全程離線** — 文件內容不會離開你的電腦。
+
+### PDF 換不掉時
+
+有些 PDF（銀行月結單特別常見）畫面上看得到字，程式卻抽不出正確字碼——嵌入字型缺 `ToUnicode`，
+或整段文字根本是向量外框。工具會自動偵測並升級到**整頁 OCR**，不需要你做任何事。
+
+真的還是換不掉時，報表會寫明試過哪幾級。想知道細節可以跑：
+
+```bash
+python tools/diagnose_pdf.py <檔案.pdf> <關鍵字>
+```
+
+它會報告加密狀態、字型有無 `ToUnicode`、造字區字元數、頁面畫了幾個字形對比抽得出幾個字元，
+以及關鍵字在四種寫法（原樣 / NFKC / NFC / 去空白）下有沒有命中。
+**這支工具不會印出文件內容**，只印統計與判定。
 
 ## 執行結果
 

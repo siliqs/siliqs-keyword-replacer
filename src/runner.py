@@ -128,6 +128,9 @@ def process_one(src_path: str, src_root: str, output_root: str,
 
     os.replace(tmp_path, dst_path)
     shutil.copystat(src_path, dst_path)  # 保留原時間戳，來源本身不受影響（R1）
+    if replaced == 0 and not message:
+        # 「處理完了但一個字都沒換」也要講出來，不能讓使用者以為換好了
+        message = "未取代任何內容：檔案中沒有找到關鍵字"
     return FileResult(src_path, dst_path, STATUS_OK, replaced, message)
 
 
