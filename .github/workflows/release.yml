@@ -51,18 +51,23 @@ jobs:
       - name: Stage Tesseract for bundling
         shell: pwsh
         run: |
-          # 只帶必要的：執行檔、DLL、以及 eng / osd / chi_tra 三份語言資料。
-          # 完整安裝含所有語言超過 100 MB，挑過之後大約 35 MB。
+          # 完整安裝 113 MB，挑過後約 70 MB。省下來的三塊：
+          #   libicudt78.dll  31.6 MB — ICU 資料表，基本 OCR 用不到（靠下面的冒煙測試把關）
+          #   osd.traineddata 10.1 MB — 方向/文字方向偵測，我們用預設 psm 3 不會叫它
+          #   eng.traineddata  3.9 MB — 換成 tessdata_fast 版本
           $source = "C:\Program Files\Tesseract-OCR"
           $target = "vendor/tesseract"
           New-Item -ItemType Directory -Force -Path "$target/tessdata" | Out-Null
           Copy-Item "$source/*.exe" $target
-          Copy-Item "$source/*.dll" $target
-          foreach ($lang in @("eng", "osd", "chi_tra")) {
-            Copy-Item "$source/tessdata/$lang.traineddata" "$target/tessdata/"
+          Get-ChildItem "$source/*.dll" | Where-Object { $_.Name -notlike "libicudt*" } |
+            Copy-Item -Destination $target
+
+          foreach ($lang in @("eng", "chi_tra")) {
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/$lang.traineddata" `
+              -OutFile "$target/tessdata/$lang.traineddata"
           }
           if (Test-Path "$source/LICENSE") { Copy-Item "$source/LICENSE" "$target/LICENSE-Tesseract" }
-          "{0:N1} MB" -f ((Get-ChildItem $target -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+          "打包內容 {0:N1} MB" -f ((Get-ChildItem $target -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)
 
       - name: Build exe
         # Tesseract 一起打包進去，使用者不必自己安裝就能用 OCR
