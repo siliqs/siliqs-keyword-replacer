@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.spec
+snoopy_folder/
+ci_out/
+CLAUDE.md
+log.md

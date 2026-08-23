@@ -1,0 +1,5 @@
+# 這支工具的重點就是位元組保真，測試樣本絕不能被 git 動到換行符。
+# Windows runner 預設 core.autocrlf=true，沒有這行會把 LF 樣本檔改成 CRLF，
+# 讓「保留原換行符」的測試在 CI 上假性失敗。
+* -text
+tests/samples/** binary
