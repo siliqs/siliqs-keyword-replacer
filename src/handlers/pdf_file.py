@@ -18,7 +18,10 @@ from __future__ import annotations
 import io
 from typing import Iterable, List
 
-import fitz
+try:
+    import pymupdf as fitz          # PyMuPDF 1.24+ 的新名稱
+except ImportError:
+    import fitz
 from PIL import Image
 
 from src import ocr

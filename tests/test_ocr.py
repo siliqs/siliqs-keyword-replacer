@@ -6,7 +6,10 @@
 import io
 import os
 
-import fitz
+try:
+    import pymupdf as fitz          # PyMuPDF 1.24+ 的新名稱
+except ImportError:
+    import fitz
 import pytest
 from PIL import Image
 

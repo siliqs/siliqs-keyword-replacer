@@ -13,7 +13,10 @@ import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import fitz
+try:
+    import pymupdf as fitz          # PyMuPDF 1.24+ 的新名稱
+except ImportError:
+    import fitz
 
 PUA = ((0xE000, 0xF8FF), (0xF0000, 0xFFFFD), (0x100000, 0x10FFFD))
 

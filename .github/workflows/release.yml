@@ -73,7 +73,11 @@ jobs:
         run: |
           # 把系統安裝的 Tesseract 移出 PATH，確認 exe 用的真的是內建那份
           $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike "*Tesseract*" }) -join ';'
-          & ./dist/KeywordReplacer.exe --src tests/samples --out exe_out --keyword Secret
+          # --windowed 是 GUI 程式，用 & 呼叫 PowerShell 不會等它跑完，必須 Start-Process -Wait
+          $proc = Start-Process -FilePath "./dist/KeywordReplacer.exe" `
+            -ArgumentList "--src","tests/samples","--out","exe_out","--keyword","Secret" `
+            -PassThru -Wait
+          if ($proc.ExitCode -ne 0) { throw "exe 以 exit $($proc.ExitCode) 結束" }
           $report = "exe_out/snoopy_folder/_report.csv"
           if (-not (Test-Path $report)) { throw "exe 沒有產生報表" }
           Get-Content $report
